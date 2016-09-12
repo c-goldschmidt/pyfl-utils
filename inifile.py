@@ -118,7 +118,7 @@ class INIFile(object):
             raw += section.to_raw()
                     
         with open(self._filename, 'wb') as file:
-            file.write(raw)
+            file.write(raw.encode('utf-8'))
             
     def to_list(self):
         ret_list = []
@@ -174,7 +174,7 @@ class IniSection(object):
             else:
                 raw += self._kv_to_raw(key, value)
                 
-        return raw
+        return raw + '\r\n'
         
     def _kv_to_raw(self, key, value):
         if value == '':

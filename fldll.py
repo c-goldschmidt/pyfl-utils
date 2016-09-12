@@ -4,11 +4,12 @@ import os
 import struct
 from .constants import *
 from .inifile import INIFile
+from .stringutils import try_decode
 
 _logger = logging.getLogger(__name__)
 
 class FLDll(object):
-    def __init__(self, dll_file, ini_file=None):
+    def __init__(self, dll_file, ini_file=None, base_index=None):
         self._pages = {}
         self._infocards = {}
         self._update_infocards = []
@@ -16,7 +17,12 @@ class FLDll(object):
         
         self.dll_file = os.path.abspath(dll_file)
         self._load_dll()
-                
+        
+        if os.path.basename(dll_file) == 'Manhattan.dll':
+            print('DLL Content')
+            self.print_all()
+        
+        self._dll_base_index = None        
         if ini_file:
             ini_file = INIFile(ini_file)
             
@@ -26,6 +32,8 @@ class FLDll(object):
             if section:
                 dlls = section.get('DLL')
                 self._dll_base_index = dlls.index(base) + 1
+        elif base_index:
+            self._dll_base_index = base_index
 
     @staticmethod
     def _load_string(module, id):
@@ -68,11 +76,9 @@ class FLDll(object):
         
     @staticmethod
     def _serialize_infocard(infocard):  
-        s = infocard.decode('utf-8').encode('utf-16')
-        str_format = 'c' * len(s)
-        packed = struct.pack(str_format, *s)
-        packed += '\x20\x00\x20\x00\x00'
-        return packed
+        s = try_decode(infocard)
+        s = s.encode('utf-16')
+        return s
         
     @staticmethod
     def index_to_id(index, page):
@@ -96,7 +102,7 @@ class FLDll(object):
         if not self._dll_base_index:
             raise Exception('Not initialized with freelancer.ini!')
         else:
-            return self._dll_base_index * 65536 + id
+            return int(self._dll_base_index * 65536 + id)
                 
     def get_by_id(self, ini_id):
         dll_id = int(ini_id) % 65536
@@ -151,7 +157,8 @@ class FLDll(object):
             
     def find_infocard(self, infocard):
         try:
-            ret = self._infocards.keys()[self._infocards.values().index(infocard)]
+            infocard_values = list(self._infocards.values())
+            ret = self._infocards.keys()[infocard_values.index(infocard)]
         except ValueError:
             ret = False
             
@@ -288,7 +295,7 @@ class FLDll(object):
         for page in self._pages.values():
             #if page.needs_update():
             _logger.debug('update page {}'.format(page.get_id()))
-            data = page.serialize()         
+            data = page.serialize().encode('utf-16')[2:]
             UpdateResource(update_handle, 6, page.get_id(), 1033, data, len(data))
             
         for id in self._infocards:
@@ -296,6 +303,7 @@ class FLDll(object):
                 continue
             _logger.debug('update infocard {}'.format(id))
             data = self._serialize_infocard(self._infocards[id])
+            print(id, len(data))
             UpdateResource(update_handle, 23, id, 1033, data, len(data))
             
         EndUpdateResource(update_handle, False)
@@ -359,7 +367,7 @@ class StringTable(object):
     def print_table(self):
         print('--- Page {} ---'.format(self._id))
         for i in self._slots:
-            str = self._slots[i].encode('utf-8')
+            str = self._slots[i]
             if i in self._locked_slots:
                 str = '###LOCKED###'
             print('{}: {}'.format(
@@ -369,12 +377,12 @@ class StringTable(object):
         
     def _pack_string(self, string):
         if string == '':
-            return '\x00\x00'
+            return '\x00'
         else:
-            s = string.decode('utf-8').encode('utf-16')
-            l = len(s) - 2  # (-2 for the byteorder mark, which FL assumes to be little endian)
-            str_format = 'h' + ('c' * l)
-            formatted = struct.pack(str_format, l / 2, *s[2:])
+            s = try_decode(string)
+            s = s.encode('utf-16')[2:]
+            formatted = struct.pack('h', int(len(s) / 2))
+            formatted = (formatted + s).decode('utf-16')
             return formatted
     
     def serialize(self):

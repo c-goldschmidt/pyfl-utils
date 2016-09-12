@@ -48,7 +48,7 @@ def updateNewsBases(newsINI, newsID='all'):
 			newsSection = getSectionByKeyValuePair(newsINI, 'newsid', newsID)
 			updateNewsBasesInSection(section, allBases)
 		except:
-			print '"{}" not found!'.format(newsID)
+			print('"{}" not found!'.format(newsID))
 		
 	newsINI.write()
 	
