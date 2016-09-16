@@ -2,6 +2,7 @@ import logging
 import math
 import os
 import struct
+
 from .constants import *
 from .inifile import INIFile
 from .stringutils import try_decode
@@ -17,10 +18,6 @@ class FLDll(object):
         
         self.dll_file = os.path.abspath(dll_file)
         self._load_dll()
-        
-        if os.path.basename(dll_file) == 'Manhattan.dll':
-            print('DLL Content')
-            self.print_all()
         
         self._dll_base_index = None        
         if ini_file:
@@ -78,6 +75,8 @@ class FLDll(object):
     def _serialize_infocard(infocard):  
         s = try_decode(infocard)
         s = s.encode('utf-16')
+        s += '\x20\x20\x00'.encode('utf-16')[2:-1]
+        
         return s
         
     @staticmethod
@@ -284,13 +283,18 @@ class FLDll(object):
         for id in self._infocards:
             print(id)
             print(self._infocards[id])
-        
+                    
     def save(self):
         update_handle = BeginUpdateResource(self.dll_file.encode('utf-8'), True)
         
         if update_handle == 0:
             _logger.error('error getting handle: {}'.format(GetLastError()))
             return
+        
+        # update fileinfo section
+        version_info = VS_VERSION_INFO()
+        print(version_info)
+        UpdateResource(update_handle, 16, 1, 0, version_info, len(version_info))
             
         for page in self._pages.values():
             #if page.needs_update():
@@ -303,7 +307,6 @@ class FLDll(object):
                 continue
             _logger.debug('update infocard {}'.format(id))
             data = self._serialize_infocard(self._infocards[id])
-            print(id, len(data))
             UpdateResource(update_handle, 23, id, 1033, data, len(data))
             
         EndUpdateResource(update_handle, False)

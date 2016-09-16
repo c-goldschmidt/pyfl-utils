@@ -1,5 +1,8 @@
+import logging
 import os
 from .multidict import MultiDict
+
+_logger = logging.getLogger(__name__)
 
 
 class INIFile(object):
@@ -8,7 +11,10 @@ class INIFile(object):
         self._filename = filename
         
         with open(filename, 'r') as file:
-            self._raw = file.readlines()
+            try:
+                self._raw = file.readlines()
+            except:
+                return
         self._parse()
         
     def get_path(self):
@@ -22,6 +28,10 @@ class INIFile(object):
             
             if line == '' or line.startswith(';'):
                 continue
+                
+            if line.startswith('BINI'):
+                _logger.error('this is a bini file!!')
+                return
                             
             if line.startswith('['):
                 line = line.strip('[]')
@@ -37,7 +47,10 @@ class INIFile(object):
             section.print_raw()
             
     def get(self, section_name):
-        return self._sections[section_name.lower()]
+        try:
+            return self._sections[section_name.lower()]
+        except KeyError:
+            return None
         
     def get_by_key(self, key, multiple=True, section_name=None):
         if section_name:
@@ -118,7 +131,7 @@ class INIFile(object):
             raw += section.to_raw()
                     
         with open(self._filename, 'wb') as file:
-            file.write(raw.encode('utf-8'))
+            file.write(raw.encode('cp1252'))
             
     def to_list(self):
         ret_list = []
@@ -176,11 +189,14 @@ class IniSection(object):
                 
         return raw + '\r\n'
         
-    def _kv_to_raw(self, key, value):
-        if value == '':
+    def _kv_to_raw(self, key, value, allow_empty=True):
+        if value == '' and not allow_empty:
             return '{}\r\n'.format(key)
         else:
-            return '{} = {}\r\n'.format(key, value)
+            value = str(value).strip()
+            if value != '':
+                value = ' ' + value
+            return '{} ={}\r\n'.format(key, value)
             
     def _has_key(self, key):
         return key in self._options
