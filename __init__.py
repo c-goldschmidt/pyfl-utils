@@ -2,6 +2,7 @@ from collections import namedtuple
 from .utf import UTFFile
 from .inifile import INIFile, IniSection
 from .fldll import FLDll
+from .utils import *
 
 SettingsTPL = namedtuple('Settings', [
 	'dll',

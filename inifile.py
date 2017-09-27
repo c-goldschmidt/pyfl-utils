@@ -1,6 +1,8 @@
+import codecs
 import logging
 import os
 from .multidict import MultiDict
+from .bini import BINI
 
 _logger = logging.getLogger(__name__)
 
@@ -10,20 +12,50 @@ class INIFile(object):
         self._sections = MultiDict()
         self._filename = filename
         
-        with open(filename, 'r') as file:
+        with open(filename, 'rb') as file:
             try:
-                self._raw = file.readlines()
+                self._raw = file.read()
             except:
+                _logger.error('cannot read INI file')
                 return
-        self._parse()
+
+        is_bini = self._parse_bini()        
+        if not is_bini:
+            self._parse_raw()
+
+        _logger.debug(filename)
         
     def get_path(self):
         return os.path.dirname(self._filename)
-        
-    def _parse(self):
+
+    def _is_bini(self):
+        encoded = self._raw.decode('UTF-8', errors='replace')
+        return encoded.startswith('BINI')
+
+    def _parse_bini(self):
+        if self._is_bini():
+            bini = BINI(self._raw)
+            
+            for section in bini.get_sections():
+                ini_section = IniSection(section['name'])
+                
+                for entry in section['entries']:
+                    vals = []
+                    for value in entry['values']:         
+                        vals.append(str(value.value))
+                        
+                    ini_section.add(entry['name'], ', '.join(vals))
+                
+                self.add(ini_section)            
+            return True
+        return False
+    
+    def _parse_raw(self):
+        self._raw = self._raw.decode('UTF-8', errors='replace')
         current_section = None
-        for line in self._raw:
+        for line in self._raw.split('\n'):
             line = line.replace('\n', '')
+            line = line.replace('\r', '')
             line = line.strip('\r\n \t')
             
             if line == '' or line.startswith(';'):
@@ -102,10 +134,10 @@ class INIFile(object):
             return None
         
     def set(self, section):
-        self._sections.set(section.name, section)
+        self._sections.set(section.name.lower(), section)
         
     def add(self, section):
-        self._sections[section.name] = section
+        self._sections[section.name.lower()] = section
         
     def rem(self, section):
         if isinstance(section, IniSection):
@@ -117,7 +149,7 @@ class INIFile(object):
                 del self._sections[section.name.lower()]
         else:
             # remove by name
-            del self._sections[section]
+            del self._sections[section.lower()]
     
     def rem_by_kv(self, key, value, case_sensitive=False):
         section = self.get_by_kv(key, value, multiple=False, case_sensitive=case_sensitive)
@@ -129,9 +161,9 @@ class INIFile(object):
         raw = ''
         for section in self.to_list():
             raw += section.to_raw()
-                    
-        with open(self._filename, 'wb') as file:
-            file.write(raw.encode('cp1252'))
+
+        with codecs.open(self._filename, 'w', 'cp1252') as file:
+            file.write(raw)
             
     def to_list(self):
         ret_list = []
@@ -145,6 +177,7 @@ class INIFile(object):
                 ret_list.append(value)
             
         return ret_list
+
         
 class IniSection(object):
     @staticmethod

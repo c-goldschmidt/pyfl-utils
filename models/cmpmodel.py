@@ -7,6 +7,7 @@ from .vmeshdata import VMeshData
 from .component import Component
 from .texturepack import TexturePack
 
+
 class CMPModel(object):
     
     def __init__(self, utf, parent, textures=None):
@@ -86,8 +87,9 @@ class CMPModel(object):
                     return
                 
                 self._load_mesh_values(crc, start, end, mesh_center, rota, offset)
-                
-    def _get_mesh_center(self, base_center, mesh_ref, has_data):
+
+    @staticmethod
+    def _get_mesh_center(base_center, mesh_ref, has_data):
         if has_data:
             return {
                 'x': base_center['x'],
@@ -107,7 +109,7 @@ class CMPModel(object):
         vertices = self.data[crc].vertices
         lod_level = self.lod_levels[crc]
         
-        if not lod_level in self.mesh_index:
+        if lod_level not in self.mesh_index:
             self.mesh_index[lod_level] = 0
             
         for mesh_idx in range(mesh_start, mesh_end):
@@ -116,9 +118,7 @@ class CMPModel(object):
             start = mesh.triangle_start
             end = mesh.triangle_start + int(mesh.num_ref_vertices / 3)            
             offset = mesh.start_vertex + vertex_offset
-            
-            _mesh_idx = self.mesh_index[lod_level]
-            
+
             self.prepared_vertices[lod_level].append([])
             self.prepared_normals[lod_level].append([])
             self.prepared_uvs[lod_level].append([])
@@ -165,14 +165,7 @@ class CMPModel(object):
             vertex_2,
             vertex_3,
         )
-        
-    def _uvs_to_array(self, vertex_1, vertex_2, vertex_3):
-        return [
-            vertex_1.s, vertex_1.t,
-            vertex_2.s, vertex_2.t,
-            vertex_3.s, vertex_3.t,
-        ]
-                                
+
     def _vertices_to_array(self, vertex_1, vertex_2, vertex_3, center, rota):
         vec = np.matrix([
             [vertex_1.x, vertex_1.y, vertex_1.z],
@@ -184,32 +177,7 @@ class CMPModel(object):
         out = self._apply_offset_to_matrix(out, center)
         
         return out
-        
-    def _apply_offset_to_matrix(self, out, center):        
-        out[0][0] += center['x']
-        out[0][1] += center['y']
-        out[0][2] += center['z']
-        
-        out[1][0] += center['x']
-        out[1][1] += center['y']
-        out[1][2] += center['z']
-        
-        out[2][0] += center['x']
-        out[2][1] += center['y']
-        out[2][2] += center['z']
-        
-        return out[0] + out[1] + out[2]
-        
-    def _normals_to_array(self, vertex_1, vertex_2, vertex_3, rota):
-        vec = np.matrix([
-            [vertex_1.normal_x, vertex_1.normal_y, vertex_1.normal_z],
-            [vertex_2.normal_x, vertex_2.normal_y, vertex_2.normal_z],
-            [vertex_3.normal_x, vertex_3.normal_y, vertex_3.normal_z],
-        ])
-        
-        out = np.matmul(vec, rota).tolist()        
-        return out
-        
+
     def _parse_components(self):
         mesh_data = self.utf.find_nodes_with_name_in_path('\\VMeshLibrary')        
         for mesh in mesh_data:            
@@ -227,8 +195,43 @@ class CMPModel(object):
             
             self.refs[ref_path[1]].append(new_ref)
             self.lod_levels[new_ref.lib_id] = ref_path[-3]
-                   
-    def _print_obj(self, obj):    
+
+    @staticmethod
+    def _print_obj(obj):
         print('=============')
         print('\n'.join("%s: %s" % item for item in vars(obj).items()))
-    
+
+    @staticmethod
+    def _apply_offset_to_matrix(out, center):
+        out[0][0] += center['x']
+        out[0][1] += center['y']
+        out[0][2] += center['z']
+
+        out[1][0] += center['x']
+        out[1][1] += center['y']
+        out[1][2] += center['z']
+
+        out[2][0] += center['x']
+        out[2][1] += center['y']
+        out[2][2] += center['z']
+
+        return out[0] + out[1] + out[2]
+
+    @staticmethod
+    def _normals_to_array(vertex_1, vertex_2, vertex_3, rota):
+        vec = np.matrix([
+            [vertex_1.normal_x, vertex_1.normal_y, vertex_1.normal_z],
+            [vertex_2.normal_x, vertex_2.normal_y, vertex_2.normal_z],
+            [vertex_3.normal_x, vertex_3.normal_y, vertex_3.normal_z],
+        ])
+
+        out = np.matmul(vec, rota).tolist()
+        return out
+
+    @staticmethod
+    def _uvs_to_array(vertex_1, vertex_2, vertex_3):
+        return [
+            vertex_1.s, vertex_1.t,
+            vertex_2.s, vertex_2.t,
+            vertex_3.s, vertex_3.t,
+        ]

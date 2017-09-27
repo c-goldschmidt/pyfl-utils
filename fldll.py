@@ -1,13 +1,13 @@
 import logging
 import math
 import os
-import struct
 
 from .constants import *
 from .inifile import INIFile
 from .stringutils import try_decode
 
 _logger = logging.getLogger(__name__)
+
 
 class FLDll(object):
     def __init__(self, dll_file, ini_file=None, base_index=None):
@@ -130,7 +130,7 @@ class FLDll(object):
             self._max_table += 1
             new_page = StringTable(self._max_table)
             new_page.add_string(0, string)
-            page.set_update()
+            new_page.set_update()
             self._pages[self._max_table] = new_page
             
             return self.index_to_id(0, self._max_table)

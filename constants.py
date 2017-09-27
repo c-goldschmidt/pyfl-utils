@@ -6,17 +6,19 @@ from collections import OrderedDict
 
 
 def errcheck_bool(result, func, args):
-	if not result:
-		raise ctypes.WinError(ctypes.get_last_error())
-	return args
-	
+    if not result:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return args
+
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 user32.LoadStringW.errcheck = errcheck_bool
-user32.LoadStringW.argtypes = (wintypes.HINSTANCE,
-							   wintypes.UINT,
-							   wintypes.LPWSTR,
-							   ctypes.c_int)
-							   
+user32.LoadStringW.argtypes = (
+    wintypes.HINSTANCE,
+    wintypes.UINT,
+    wintypes.LPWSTR,
+    ctypes.c_int,
+)
+
 PWCHAR = ctypes.POINTER(wintypes.WCHAR)
 
 LoadLibrary = ctypes.windll.kernel32.LoadLibraryExW
@@ -34,9 +36,11 @@ EndUpdateResource = ctypes.windll.kernel32.EndUpdateResourceA
 UpdateResource = ctypes.windll.kernel32.UpdateResourceA
 EnumResourceNames = ctypes.windll.kernel32.EnumResourceNamesA
 EnumResourceNameCallback = ctypes.WINFUNCTYPE(
-	ctypes.wintypes.BOOL,
-	ctypes.wintypes.HMODULE, ctypes.wintypes.LONG,
-	ctypes.wintypes.LONG, ctypes.wintypes.LONG,
+    ctypes.wintypes.BOOL,
+    ctypes.wintypes.HMODULE,
+    ctypes.wintypes.LONG,
+    ctypes.wintypes.LONG,
+    ctypes.wintypes.LONG,
 )
 
 LOAD_LIBRARY_AS_IMAGE_RESOURCE = 0x20
@@ -45,14 +49,15 @@ LOAD_WITH_ALTERED_SEARCH_PATH = 0x8
 
 LOCAL_EN_US = 1033
 
+
 def VS_FIXEDFILEINFO(maj, min, sub, build):
     return struct.pack(
         'lllllllllllll',
         -17890115, 
         0x00010000, 
-        (maj << 16) | min,	# dwFileVersionMS
-        (sub << 16) | build,# dwFileVersionLS
-        (maj << 16) | min,	# dwProductVersionMS
+        (maj << 16) | min,	  # dwFileVersionMS
+        (sub << 16) | build,  # dwFileVersionLS
+        (maj << 16) | min,	  # dwProductVersionMS
         (sub << 16) | build,
         0x0000003f, 0x00000000, 
         0x00040004, 0x00000001, 0x00000000, 0x00000000,
@@ -61,9 +66,11 @@ def VS_FIXEDFILEINFO(maj, min, sub, build):
 
 NULL_TERM = '\x00'.encode('utf-16')[3:]
 
+
 def addlen(s, modificator=3):
     return struct.pack('h', len(s) + modificator) + s
-  
+
+
 def nullterm(s):
     try:
         s = s.decode('utf-16')
@@ -73,7 +80,8 @@ def nullterm(s):
     s = s.encode('utf-16')[2:]
     # get raw bytes for a NULL terminated unicode string.
     return s + NULL_TERM
-    
+
+
 def pad32(s, extra=1):
     # extra is normally 2 to deal with wLength
     l = 4 - ((len(s) + extra) & 3)
@@ -81,9 +89,11 @@ def pad32(s, extra=1):
         return s + (NULL_TERM * l)
     return s
 
+
 def _len(value):
     return int((len(value)) / 2) + 1
-    
+
+
 def String(key, value):
     key = nullterm(key)
     
@@ -101,6 +111,7 @@ def String(key, value):
     
     return addlen(result, mod)
 
+
 def Var(key, value):
     key = nullterm(key)    
     print(value, len(value))
@@ -109,7 +120,8 @@ def Var(key, value):
     result = result + key
     result = pad32(result, 2) + value
     return addlen(result, 2)
-  
+
+
 def StringTable(key, data):
     key = key.encode('utf-16')[2:]
 
@@ -125,14 +137,16 @@ def StringTable(key, data):
     print(len(result))
         
     return addlen(result, 2)
-  
+
+
 def StringFileInfo(data):
     result = struct.pack('hh', 0, 1)  # wValueLength, wType
     result = result + nullterm('StringFileInfo')
     result = pad32(result, 2) + StringTable('040904b0', data)
     #  result = pad32(result) + StringTable('040904E4', data)
     return addlen(result, 2)
-    
+
+
 def VarFileInfo(data):
     result = struct.pack('hh', 0, 1)  # wValueLength, wType
     result = result + nullterm('VarFileInfo')
@@ -140,6 +154,7 @@ def VarFileInfo(data):
     for k, v in data.items():
         result = result + Var(k, v)
     return addlen(result, 2)
+
 
 def VS_VERSION_INFO():
     sdata = OrderedDict()
