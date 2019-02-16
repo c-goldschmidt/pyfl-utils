@@ -1,5 +1,6 @@
 from collections import OrderedDict
 
+
 class MultiDict(OrderedDict):
 	def __setitem__(self, key, val):
 		if key in self:

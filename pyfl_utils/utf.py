@@ -4,11 +4,12 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+
 class UTFFile(object):
-    def __init__(self, utf_file, fl_module=None):
-        self._file = os.path.abspath(utf_file)
+    def __init__(self, utf_file=None):
+        self._file = os.path.abspath(utf_file) if utf_file else None
         
-        if os.path.isfile(self._file):
+        if utf_file and os.path.isfile(self._file):
             self._load_file()
         else:
             self._root = UTFTreeRoot()
@@ -18,7 +19,7 @@ class UTFFile(object):
         raw_data = fi.read()
         fi.close()
                 
-        if raw_data[0:4] != b'UTF ' :
+        if raw_data[0:4] != b'UTF ':
             raise Exception('not a valid utf file!')
             
         return raw_data
@@ -34,13 +35,13 @@ class UTFFile(object):
         found = self._root.save_data_to_file(node_name, filename, multiple)
         
         if not found and not multiple:
-            print('node "{}" not found'.format(node_name))
+            _logger.warning(f'node "{node_name}" not found')
             
     def get_node_data(self, node_name, multiple=False):
         found = self._root.get_node_data(node_name, multiple)
         
         if not found and not multiple:
-            print('node "{}" not found'.format(node_name))
+            _logger.warning(f'node "{node_name}" not found')
         else:
             return found
             
@@ -80,20 +81,21 @@ class UTFFile(object):
     def save(self, filename=False):
         if not filename:
             filename = self._file
-            
+
         self._root._write_to_file(filename)
-        
-    def add_node(self, node_path, file_path):
+
+    def add_node(self, node_path, file_path=None, data=None):
         path_parts = node_path.split('\\')[1:]
         root_node = self._root._get_root_node()
         first_parent, remaining_path = self._find_node_matching_path(path_parts, root_node)
+
+        if file_path:
+            with open(file_path, 'rb') as file:
+                data = file.read()
+
+        self._create_nodes(remaining_path, first_parent, data)
         
-        with open(file_path, 'rb') as file:
-            file_content = file.read()
-        
-        self._create_nodes(remaining_path, first_parent, file_content)
-        
-        self.print_tree()
+        # self.print_tree()
         
     def _find_node_matching_path(self, path_parts, node):
         current_search = path_parts[0]
@@ -121,7 +123,7 @@ class UTFFile(object):
         
     def _create_nodes(self, node_names, node_append, data):
         for i, name in enumerate(node_names):
-            print('creating node {} as child of {}'.format(name, node_append['name']))
+            _logger.debug('creating node {} as child of {}'.format(name, node_append['name']))
             node = UTFTreeNode(
                 empty=True,
             )
@@ -217,16 +219,16 @@ class UTFTreeNode(object):
                 self._root,
                 self['path']
             )            
-        else:# if self['flags'] == 128:
+        else:  # if self['flags'] == 128:
             self['node_type'] = 'leaf'
             if self['size'] != self['size2']:
-                print('This might be compressed !?')
+                _logger.warning('This might be compressed !?')
                 
             self['data'] = self._root._load_data(
                 self['data_block_offset'], 
                 self['size'],
             )
-        #elif self['flags'] not in [16, 128]:
+        # elif self['flags'] not in [16, 128]:
         #    print('unexpected node flag: {}'.format(self['flags']))
             
     def _get_int(self, read_position):
@@ -245,7 +247,7 @@ class UTFTreeNode(object):
                 
                 return not multiple_path
             else:
-                print('node does not contain data')
+                _logger.error('node does not contain data')
                 return True
         else:
             found = False
@@ -263,7 +265,7 @@ class UTFTreeNode(object):
                 else:
                     return self
             else:
-                print('node does not contain data')
+                _logger.error('node does not contain data')
                 return False
         else:
             found = None
@@ -279,14 +281,22 @@ class UTFTreeNode(object):
                         
             return ret
             
-    def update_node_data(self, node_name, filename):
+    def update_node_data(self, node_name, filename=None, data=None):
+        if not filename and not data:
+            raise Exception('either filename or binary data is needed')
+
         if self['path'].endswith(node_name):
             if self['flags'] == 128:
-                with open(filename, 'rb') as file:
-                    data = file.read()                  
+                if filename:
+                    with open(filename, 'rb') as file:
+                        data = file.read()
+
+                if not isinstance(data, bytes):
+                    _logger.error('data has to be in binary format!')
+
                 self['data'] = data
             else:
-                print('node is not a leaf!')
+                _logger.error('node is not a leaf!')
                 
             return True
         else:
@@ -337,41 +347,41 @@ class UTFTreeNode(object):
     # iterator & access
     def __delitem__(self, key):
         del self._data[key]
+
     def __getitem__(self, key):
         return self._data[key]
+
     def __setitem__(self, key, value):
         if key == 'node_type':
             self['flags'] = 128 if value == 'leaf' else 16
         self._data[key] = value
+
     def __iter__(self):
         return self._data.__iter__()
-        
+
 
 class UTFTreeRoot(UTFTreeNode):
     def __init__(self, raw_data=None):
-        self._raw = bytes(raw_data)
         self._raw_len = 0
-        
-        init_empty = raw_data is None    
-        
+
         if raw_data:
+            self._raw = bytes(raw_data)
             self._raw_len = len(self._raw)
+            super(UTFTreeRoot, self).__init__(empty=False)
         else:
+            super(UTFTreeRoot, self).__init__(empty=True)
             self._actual_root_node = UTFTreeNode(
                 self, 
                 56,
                 self,
                 '__ROOT__',
                 True
-            )    
+            )
             self.add_child(self._actual_root_node)
-
-        super(UTFTreeRoot, self).__init__(empty=init_empty)
         
         self['name'] = 'root'
         self['path'] = ''
-             
-        
+
     def _load(self):
         pos = self._offset
         
@@ -441,7 +451,8 @@ class UTFTreeRoot(UTFTreeNode):
     def _write_to_file(self, filename):
         writer = UTFWriter(self, filename)
         writer.save()
-        
+
+
 class UTFWriter(object):
     def __init__(self, tree, filename):
         self._tree = tree
@@ -449,8 +460,8 @@ class UTFWriter(object):
         
         self._name_offsets = {}
         
-        self._node_block = ''
-        self._string_block = ''
+        self._node_block = b''
+        self._string_block = b''
         self._data_block = b''
         
         self._write_nodes = []
@@ -479,14 +490,14 @@ class UTFWriter(object):
         self._tree['string_block_size'] = len(self._string_block) + 1
         self._tree['string_block_alloc'] = (self._tree['string_block_size'] + 7) & ~7
         self._tree['data_block_offset'] = self._tree['string_block_offset'] + self._tree['string_block_alloc']
-                                
+
         self._raw = self._pack_header(self._tree)
         self._raw += self._node_block
         self._raw += self._string_block
-        self._raw += '\x00'
+        self._raw += b'\x00'
         
         for i in range(self._tree['string_block_size'], self._tree['string_block_alloc']):
-            self._raw += '\x00'
+            self._raw += b'\x00'
         
         self._raw += self._data_block
                         
@@ -502,11 +513,11 @@ class UTFWriter(object):
             node['size'] = len(node['data'])
             node['size2'] = node['size']
             node['allocated_size'] = (node['size'] + 3) & ~ 3
-                        
+
             self._data_block += node['data']
             
             for i in range(node['size'], node['allocated_size']):
-                self._data_block += '\x00'
+                self._data_block += b'\x00'
         else:
             node['size'] = 0
             node['size2'] = 0
@@ -536,15 +547,15 @@ class UTFWriter(object):
                 self._prepare_nodes(node)       
             
     def _pack_string(self, string):
-        name = struct.pack('c' * len(string), *string) + '\x00'
-                
+        name = (string if isinstance(string, bytes) else string.encode('UTF-8')) + b'\x00'
+
         if name in self._name_offsets:
             ret = self._name_offsets[name]
         else:
             ret = len(self._string_block)
             self._string_block += name
             self._name_offsets[name] = ret
-                    
+
         return ret
                 
     @staticmethod
@@ -583,5 +594,3 @@ class UTFWriter(object):
             node['timestamp_1'],
             node['timestamp_2']
         )
-        
-        

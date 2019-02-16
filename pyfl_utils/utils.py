@@ -1,3 +1,4 @@
+
 def concat_lists(list1, list2):
     if not list1:
         return list2

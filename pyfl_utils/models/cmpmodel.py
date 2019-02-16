@@ -1,22 +1,26 @@
+import logging
+
 import numpy as np
 from collections import defaultdict
 
+from .mesh import MeshConstants
 from ..utf import UTFFile
 from .vmeshref import VMeshRef
 from .vmeshdata import VMeshData
 from .component import Component
 from .texturepack import TexturePack
 
+_logger = logging.getLogger(__name__)
+
 
 class CMPModel(object):
     
-    def __init__(self, utf, parent, textures=None):
+    def __init__(self, utf, textures=None):
         if not isinstance(utf, UTFFile):
             raise ValueError('utf must be UTFFile!')
             
         self.utf = utf
-        
-        self._parent = parent
+
         self.refs = defaultdict(list)
         self.data = {}
         self.lod_levels = {}
@@ -27,19 +31,19 @@ class CMPModel(object):
         self.prepared_normals = defaultdict(list)
         self.materials_per_mesh = defaultdict(list)
         self.prepared_uvs = defaultdict(list)
-        
+
         self._parse_components()
         self._prepare_values()
-        
+
         # remove multiples
         self.material_ids = list(set(self.material_ids))
         self.textures = None
         if textures:
-            self.textures = TexturePack(self.material_ids, textures, self._parent)
+            self.textures = TexturePack(self.material_ids, textures)
         
     def get_lod_levels(self):
         return sorted(list(set(self.lod_levels.values())))
-        
+
     def get_vertices(self, lod_level):
         return self.prepared_vertices[lod_level]
             
@@ -61,7 +65,7 @@ class CMPModel(object):
         if len(new_textures) == 0:
             self.textures = None
         else:
-            self.textures = TexturePack(self.material_ids, new_textures, self._parent)
+            self.textures = TexturePack(self.material_ids, new_textures)
         
     def _prepare_values(self):
         self.mesh_index = defaultdict(list)
@@ -79,11 +83,13 @@ class CMPModel(object):
                 
                 start = mesh_ref.start_mesh
                 end = start + mesh_ref.num_meshes
-                offset = mesh_ref.start_vertex            
+                offset = mesh_ref.start_vertex
                 crc = mesh_ref.lib_id
-                
+
+                _logger.debug(f'meshes in {crc}: {mesh_ref.num_meshes}')
+
                 if crc not in self.data:
-                    self._parent.status('critical: mesh crc {} not found'.format(crc))
+                    _logger.critical(f'critical: mesh crc {crc} not found')
                     return
                 
                 self._load_mesh_values(crc, start, end, mesh_center, rota, offset)
@@ -108,10 +114,12 @@ class CMPModel(object):
         triangles = self.data[crc].triangles
         vertices = self.data[crc].vertices
         lod_level = self.lod_levels[crc]
+
+        _logger.debug(f'vertices in {crc}: {len(vertices)} / {self.data[crc].num_vertices} => {mesh_start}, {mesh_end}')
         
         if lod_level not in self.mesh_index:
             self.mesh_index[lod_level] = 0
-            
+
         for mesh_idx in range(mesh_start, mesh_end):
             mesh = meshes[mesh_idx]
                         
@@ -122,15 +130,21 @@ class CMPModel(object):
             self.prepared_vertices[lod_level].append([])
             self.prepared_normals[lod_level].append([])
             self.prepared_uvs[lod_level].append([])
-            self.materials_per_mesh[lod_level].append(mesh.material_id) 
-            
+            self.materials_per_mesh[lod_level].append(mesh.material_id)
+
+            _logger.debug(f'vertex offset: {offset} ({vertex_offset}), start/end: {start}/{end}')
+            _logger.debug(f'num_ref_vertices: {mesh.num_ref_vertices}')
+            _logger.debug(f'start_vertex: {mesh.start_vertex}')
+            _logger.debug(f'end_vertex: {mesh.end_vertex}')
+            _logger.debug(f'faces: {mesh.num_ref_vertices / 3}')
+
             for idx in range(start, end):
                 triangle = triangles[idx]
                 
                 try: 
                     self._load_triangle_data(lod_level, vertices, triangle, center, rota, offset)
                 except:
-                    self._parent.status('error loading model...')
+                    _logger.error(f'error loading model at vertex {idx}')
                     raise
             
             self.mesh_index[lod_level] += 1
@@ -141,10 +155,17 @@ class CMPModel(object):
             arr.append([])
     
     def _load_triangle_data(self, lod_level, vertices, triangle, center, rota, offset):
-        vertex_1 = vertices[triangle.vertex_1 + offset]                
-        vertex_2 = vertices[triangle.vertex_2 + offset]                
-        vertex_3 = vertices[triangle.vertex_3 + offset]
-        
+        try:
+            vertex_1 = vertices[triangle.vertex_1 + offset]
+            vertex_2 = vertices[triangle.vertex_2 + offset]
+            vertex_3 = vertices[triangle.vertex_3 + offset]
+        except:
+            _logger.error(f'vertices: {len(vertices)}')
+            _logger.error(f'=> v1: {triangle.vertex_1 + offset}')
+            _logger.error(f'=> v2: {triangle.vertex_2 + offset}')
+            _logger.error(f'=> v2: {triangle.vertex_3 + offset}')
+            raise
+
         mesh_idx = self.mesh_index[lod_level]
         
         self.prepared_vertices[lod_level][mesh_idx] += self._vertices_to_array(
@@ -153,13 +174,16 @@ class CMPModel(object):
             vertex_3,
             center, 
             rota
-        )        
-        self.prepared_normals[lod_level][mesh_idx] += self._normals_to_array(
-            vertex_1, 
-            vertex_2,
-            vertex_3,
-            rota
         )
+
+        if vertex_1.vertex_format & MeshConstants.D3DFVF_TEX2 == MeshConstants.D3DFVF_TEX2:
+            self.prepared_normals[lod_level][mesh_idx] += self._normals_to_array(
+                vertex_1,
+                vertex_2,
+                vertex_3,
+                rota
+            )
+
         self.prepared_uvs[lod_level][mesh_idx] += self._uvs_to_array(
             vertex_1, 
             vertex_2,
@@ -180,9 +204,11 @@ class CMPModel(object):
 
     def _parse_components(self):
         mesh_data = self.utf.find_nodes_with_name_in_path('\\VMeshLibrary')        
-        for mesh in mesh_data:            
+        for mesh in mesh_data:
             data = mesh.get_node_data('VMeshData')['data']
-            new_node = VMeshData(data, mesh['name'])   
+            new_node = VMeshData(data, mesh['name'])
+
+            _logger.debug(f'found VMeshLibrary {new_node.mesh_name} ({new_node.crc})')
             
             self.material_ids += new_node.material_ids
             self.data[new_node.crc] = new_node
@@ -203,6 +229,8 @@ class CMPModel(object):
 
     @staticmethod
     def _apply_offset_to_matrix(out, center):
+        # todo: numpy's probably faster
+
         out[0][0] += center['x']
         out[0][1] += center['y']
         out[0][2] += center['z']

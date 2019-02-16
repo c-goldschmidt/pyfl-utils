@@ -6,11 +6,13 @@ from tempfile import NamedTemporaryFile
 
 _logger = logging.getLogger(__name__)
 
+
 def to_tga(filename):
 	im = Image.open(filename)
 	im_name = '.'.join(filename.split('.')[:-1])
 	im.save(im_name + '.tga')
-	
+
+
 def tga_from_string(string):
 	out_size = (256, 256)
 	max_h = (out_size[0] * 3) / 4
@@ -45,10 +47,11 @@ def tga_from_string(string):
 	try:
 		os.remove(tmp_file.name)
 	except:
-		print 'can\'t remove tempfile!'
+		print('can\'t remove tempfile!')
 	
 	return return_file
-	
+
+
 def _rescale_size(max_w, max_h, img_w, img_h):
 	_logger.debug('h: {}, w: {} (max {}x{})'.format(img_h, img_w, max_w, max_h))
 	factor = max_w / float(max([img_h, img_w]))
@@ -73,5 +76,3 @@ def _rescale_size(max_w, max_h, img_w, img_h):
 	_logger.debug('{} * {} => {} * {}'.format(img_h, img_w, *out))
 	
 	return tuple(out)
-		
-	

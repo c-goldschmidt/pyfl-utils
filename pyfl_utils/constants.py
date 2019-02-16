@@ -10,6 +10,7 @@ def errcheck_bool(result, func, args):
         raise ctypes.WinError(ctypes.get_last_error())
     return args
 
+
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 user32.LoadStringW.errcheck = errcheck_bool
 user32.LoadStringW.argtypes = (

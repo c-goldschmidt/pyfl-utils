@@ -1,22 +1,22 @@
 import logging
 import os
-from fldll import FLDll
-from utf import UTFFile
-from inifile import INIFile, IniSection
-from imgconvert import tga_from_string
+from .fldll import FLDll
+from .utf import UTFFile
+from .inifile import INIFile, IniSection
+from .imgconvert import tga_from_string
 from PIL import Image
-from . import settings
+from .settings import settings
 
 _logger = logging.getLogger(__name__)
 
 
 class Newsvendor(object):
 	
-	def __init__(self):
+	def __init__(self, settings=settings):
 		self._news_ini = INIFile(settings.news)
 		self._dll = FLDll(settings.dll, settings.fl)
 		self._tex = UTFFile(settings.tex)
-				
+
 	def handle_get(self, params):
 		params = params[2:]
 		

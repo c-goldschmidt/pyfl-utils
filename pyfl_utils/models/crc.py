@@ -66,14 +66,15 @@ CRC_TABLE = [
     0x1C0BBE37, 0x150C8EA1, 0x0E05DF1B, 0x0702EF8D, 
 ]
 
-def crc(input):
+
+def crc(input_str):
     _crc = 0xFFFFFFFF
     
     try:
-        bytes = bytearray(input.lower())
+        bytes = bytearray(input_str.lower())
     except:
-        bytes = bytearray(input.encode('utf-8').lower())
-        
+        bytes = bytearray(input_str.encode('utf-8').lower())
+
     for x in bytes:
         crc_byte = 0xFF & _crc
         idx = crc_byte ^ x

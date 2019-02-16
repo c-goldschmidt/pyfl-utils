@@ -1,5 +1,7 @@
+import json
 import struct
-from collections import namedtuple
+import hashlib
+
 
 class MeshHeader(object):
     def __init__(self):
@@ -7,7 +9,7 @@ class MeshHeader(object):
         self.start_vertex = None
         self.end_vertex = None
         self.num_ref_vertices = None
-        self.padding = None
+        self.padding = 204
         self.triangle_start = None
         
 
@@ -18,7 +20,7 @@ class MeshTriangle(object):
         self.vertex_3 = None
         
         
-class MeshVertex(object):    
+class MeshVertex(object):
     def __init__(self):
         self.vertex_format = None
         self.x = None
@@ -38,6 +40,55 @@ class MeshVertex(object):
         self.binormal_x = None   
         self.binormal_y = None   
         self.binormal_z = None
+
+    @property
+    def hash(self):
+        self.update_vertex_format()
+        return hashlib.sha1(json.dumps({
+            'vertex_format': self.vertex_format,
+            'x': self.x,
+            'y': self.y,
+            'z': self.z,
+            'normal_x': self.normal_x,
+            'normal_y': self.normal_y,
+            'normal_z': self.normal_z,
+            'diffuse': self.diffuse,
+            's': self.s,
+            't': self.t,
+            'u': self.u,
+            'v': self.v,
+            'tangent_x': self.tangent_x,
+            'tangent_y': self.tangent_y,
+            'tangent_z': self.tangent_z,
+            'binormal_x': self.binormal_x,
+            'binormal_y': self.binormal_y,
+            'binormal_z': self.binormal_z,
+        }).encode('utf-8')).hexdigest()
+
+    def update_vertex_format(self):
+        format = 0x00
+
+        if self.binormal_x is not None and self.u is not None:
+            format = format | MeshConstants.D3DFVF_TEX5
+        elif self.binormal_x is not None:
+            format = format | MeshConstants.D3DFVF_TEX4
+        elif self.u is not None:
+            format = format | MeshConstants.D3DFVF_TEX2
+        elif self.s is not None:
+            format = format | MeshConstants.D3DFVF_TEX1
+        else:
+            format = format | MeshConstants.D3DFVF_TEX0
+
+        if self.x is not None:
+            format = format | MeshConstants.D3DFVF_XYZ
+
+        if self.normal_x is not None:
+            format = format | MeshConstants.D3DFVF_NORMAL
+
+        if self.diffuse is not None:
+            format = format | MeshConstants.D3DFVF_DIFFUSE
+
+        self.vertex_format = format
 
 
 class FixNode(object):    
@@ -104,8 +155,9 @@ class Texture(object):
         self.rgb_matrix = None
         self.inversion = None
 
+
 class MeshReader(object):
-    
+
     def __init__(self, raw_data):
         self.raw_data = raw_data
         self.read_position = 0
@@ -152,7 +204,31 @@ class MeshReader(object):
                 break
                 
         return string
-        
+
+
+class MeshWriter(object):
+
+    def __init__(self):
+        self.raw_data = bytes()
+
+    def set_dword(self, data):
+        self.raw_data += struct.pack('L', data)
+
+    def set_float(self, data):
+        self.raw_data += struct.pack('f', data)
+
+    def set_word(self, data):
+        self.raw_data += struct.pack('H', data)
+
+    def set_string(self, data, padded_length=None):
+        if not padded_length:
+            padded_length = len(data)
+
+        self.raw_data += data.encode('UTF-8')
+        add_nulls = padded_length - len(data)
+        for _ in range(add_nulls):
+            self.raw_data += b'\x00'
+
         
 class MeshConstants(object):
 
